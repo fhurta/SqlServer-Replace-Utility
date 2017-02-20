@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Data;
 using System.Diagnostics;
-using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.SqlServer.Management.Common;
 using Microsoft.SqlServer.Management.Smo;
@@ -10,58 +10,55 @@ namespace SqlDbNameReplace
 {
     public partial class Form1 : Form
     {
-        private Server SqlServerSelection;
+        private Server _sqlServerSelection;
 
         public Form1()
         {
+            Dout($"x {DateTime.Now:O}");
             InitializeComponent();
+            Out("Enumerating servers, please wait..");
         }
 
-        private void btnStart_Click(object sender, EventArgs e)
+        private void Dout(string s)
+        {
+            Debug.WriteLine(s);
+        }
+
+        private void Out(string s)
+        {
+            Debug.WriteLine(s);
+            if (tbOut.InvokeRequired)
+            {
+                tbOut.Invoke(new Action(() => OuptutText(s)));
+            }
+            else
+            {
+                OuptutText(s);
+            }
+        }
+
+        private void OuptutText(string s)
+        {
+            tbOut.Text += s + Environment.NewLine;
+        }
+
+        private async void btnStart_Click(object sender, EventArgs e)
+        {
+            await SearchOrReplace(false);
+        }
+
+        private async Task SearchOrReplace(bool searchOnly)
         {
             var orig = tbOrigString.Text;
             var replacement = tbNewString.Text;
 
             var db = (Database)DatabasesComboBox.SelectedItem;
+            await DbHelper.ScanAndReplaceAsync(db, orig, replacement, Out, searchOnly);
 
-            foreach (var dbView in db.Views.OfType<Microsoft.SqlServer.Management.Smo.View>())
-            {
-                var str = dbView.TextBody;
-                if (str.Contains(orig))
-                {
-                    Debug.WriteLine("V: " + dbView.Name);
-                    var updated = str.Replace(orig, replacement);
-                    dbView.TextBody = updated;
-                    dbView.Alter();
-                }
-            }
-
-            foreach (var sp in db.StoredProcedures.OfType<StoredProcedure>().Where(o => !o.IsSystemObject))
-            {
-                var str = sp.TextBody;
-                if (str.Contains(orig))
-                {
-                    Debug.WriteLine("SP: " + sp.Name);
-                    var updated = str.Replace(orig, replacement);
-                    sp.TextBody = updated;
-                    sp.Alter();
-                }
-            }
-
-            foreach (var udf in db.UserDefinedFunctions.OfType<UserDefinedFunction>().Where(o => !o.IsSystemObject))
-            {
-                var str = udf.TextBody;
-                if (str.Contains(orig))
-                {
-                    Debug.WriteLine("UDF: " + udf.Name);
-                    var updated = str.Replace(orig, replacement);
-                    udf.TextBody = updated;
-                    udf.Alter();
-                }
-            }
+            Out("Finished");
         }
 
-        private void Form1_Load(object sender, EventArgs e)
+        private async void Form1_Load(object sender, EventArgs e)
         {
             // Display the main window first
             Show();
@@ -69,14 +66,16 @@ namespace SqlDbNameReplace
 
             var serverConn = new ServerConnection();
             var scForm = new ServerConnect.ServerConnect(serverConn);
-            var dr = scForm.ShowDialog(this);
-            if ((dr == DialogResult.OK) &&
-                (serverConn.SqlConnectionObject.State == ConnectionState.Open))
+            Out("OK. Choose server..");
+
+            var dr = scForm.ShowDialog(this); //TODO: this takes quite long
+            if (dr == DialogResult.OK && serverConn.SqlConnectionObject.State == ConnectionState.Open)
             {
-                SqlServerSelection = new Server(serverConn);
-                if (SqlServerSelection != null)
+                Out("Now choose database..");
+                _sqlServerSelection = new Server(serverConn);
+                if (_sqlServerSelection != null)
                 {
-                    Text = SqlServerSelection.Name;
+                    Text = _sqlServerSelection.Name;
 
                     // Refresh database list
                     ShowDatabases(true);
@@ -90,9 +89,9 @@ namespace SqlDbNameReplace
 
         private void Form1_FormClosed(object sender, FormClosedEventArgs e)
         {
-            if (SqlServerSelection?.ConnectionContext.SqlConnectionObject.State == ConnectionState.Open)
+            if (_sqlServerSelection?.ConnectionContext.SqlConnectionObject.State == ConnectionState.Open)
             {
-                SqlServerSelection.ConnectionContext.Disconnect();
+                _sqlServerSelection.ConnectionContext.Disconnect();
             }
         }
 
@@ -110,10 +109,10 @@ namespace SqlDbNameReplace
                 DatabasesComboBox.Items.Clear();
 
                 // Limit the properties returned to just those that we use
-                SqlServerSelection.SetDefaultInitFields(typeof(Database), "Name", "IsSystemObject", "IsAccessible");
+                _sqlServerSelection.SetDefaultInitFields(typeof(Database), "Name", "IsSystemObject", "IsAccessible");
 
                 // Add database object to combobox; the default ToString will display the database name
-                foreach (Database db in SqlServerSelection.Databases)
+                foreach (Database db in _sqlServerSelection.Databases)
                 {
                     if (!db.IsSystemObject && db.IsAccessible)
                     {
@@ -134,6 +133,11 @@ namespace SqlDbNameReplace
             {
                 Cursor = csr; // Restore the original cursor
             }
+        }
+
+        private async void btnSearch_Click(object sender, EventArgs e)
+        {
+            await SearchOrReplace(true);
         }
     }
 }
