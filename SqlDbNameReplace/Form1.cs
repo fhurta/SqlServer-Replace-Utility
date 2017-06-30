@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Data;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.SqlServer.Management.Common;
@@ -14,12 +15,12 @@ namespace SqlDbNameReplace
 
         public Form1()
         {
-            Dout($"x {DateTime.Now:O}");
+            DoutLn($"x {DateTime.Now:O}");
             InitializeComponent();
             Out("Enumerating servers, please wait..");
         }
 
-        private void Dout(string s)
+        private static void DoutLn(string s)
         {
             Debug.WriteLine(s);
         }
@@ -40,6 +41,8 @@ namespace SqlDbNameReplace
         private void OuptutText(string s)
         {
             tbOut.Text += s + Environment.NewLine;
+            tbOut.SelectionStart = tbOut.Text.Length;
+            tbOut.ScrollToCaret();
         }
 
         private async void btnStart_Click(object sender, EventArgs e)
@@ -53,7 +56,17 @@ namespace SqlDbNameReplace
             var replacement = tbNewString.Text;
 
             var db = (Database)DatabasesComboBox.SelectedItem;
-            await DbHelper.ScanAndReplaceAsync(db, orig, replacement, Out, searchOnly);
+            Out($"Database: {db.Name}");
+
+            var opts = RegexOptions.CultureInvariant | RegexOptions.Compiled;
+            if (chbIgnoreCase.Checked)
+            {
+                opts |= RegexOptions.IgnoreCase;
+            }
+            var expr = chbWholeWord.Checked ? $"(?<Key>\\b{orig}\\b)" : $"(?<Key>{orig})";
+            var regex = new Regex(expr, opts);
+
+            await DbHelper.ScanAndReplaceAsync(db, regex, replacement, Out, searchOnly);
 
             Out("Finished");
         }

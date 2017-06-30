@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.SqlServer.Management.Smo;
 
@@ -9,18 +10,19 @@ namespace SqlDbNameReplace
     {
         //public static async Task
 
-        public static async Task ScanAndReplaceAsync(Database db, string orig, string replacement, Action<string> logger, bool searchOnly)
+        public static async Task ScanAndReplaceAsync(Database db, Regex regex, string replacement, Action<string> logger, bool searchOnly)
         {
-            await Task.Run(() => ScanAndReplace(db, orig, replacement, logger, searchOnly));
+            await Task.Run(() => ScanAndReplace(db, regex, replacement, logger, searchOnly));
         }
 
-        private static void ScanAndReplace(Database db, string orig, string replacement, Action<string> logger, bool searchOnly)
+        private static void ScanAndReplace(Database db, Regex regex, string replacement, Action<string> logger, bool searchOnly)
         {
-            logger("Scanning objects..");
+            logger("Scanning views..");
             foreach (var dbView in db.Views.OfType<View>().Where(o => !o.IsSystemObject && o.TextMode))
             {
                 var str = dbView.TextBody;
-                if (str.Contains(orig))
+
+                if (regex.IsMatch(str))
                 {
                     if (searchOnly)
                     {
@@ -29,7 +31,7 @@ namespace SqlDbNameReplace
                     else
                     {
                         logger($"Replacing View: [{dbView.Name}]");
-                        var updated = str.Replace(orig, replacement);
+                        var updated = regex.Replace(str, replacement);
                         dbView.TextBody = updated;
                         dbView.Alter();
                     }
@@ -40,10 +42,11 @@ namespace SqlDbNameReplace
                 }
             }
 
+            logger("Scanning SPs..");
             foreach (var sp in db.StoredProcedures.OfType<StoredProcedure>().Where(o => !o.IsSystemObject && o.TextMode))
             {
                 var str = sp.TextBody;
-                if (str.Contains(orig))
+                if (regex.IsMatch(str))
                 {
                     if (searchOnly)
                     {
@@ -52,7 +55,7 @@ namespace SqlDbNameReplace
                     else
                     {
                         logger($"Replacing SP: [{sp.Name}]");
-                        var updated = str.Replace(orig, replacement);
+                        var updated = regex.Replace(str, replacement);
                         sp.TextBody = updated;
                         sp.Alter();
                     }
@@ -63,10 +66,11 @@ namespace SqlDbNameReplace
                 }
             }
 
+            logger("Scanning UDFs..");
             foreach (var udf in db.UserDefinedFunctions.OfType<UserDefinedFunction>().Where(o => !o.IsSystemObject && o.TextMode))
             {
                 var str = udf.TextBody;
-                if (str.Contains(orig))
+                if (regex.IsMatch(str))
                 {
                     if (searchOnly)
                     {
@@ -75,7 +79,7 @@ namespace SqlDbNameReplace
                     else
                     {
                         logger($"Replacing UDF: [{udf.Name}]");
-                        var updated = str.Replace(orig, replacement);
+                        var updated = regex.Replace(str, replacement);
                         udf.TextBody = updated;
                         udf.Alter();
                     }
